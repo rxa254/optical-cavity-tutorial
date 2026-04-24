@@ -41,3 +41,14 @@ def test_optimize_history_has_strings():
     out = optimize_design(L_mm=100, R1_mm=500, R2_mm=500, F=1000, f_mod_mhz=50)
     for line in out["history"]:
         assert isinstance(line, str)
+
+
+def test_optimize_respects_upper_bounds():
+    # Start near upper bounds — optimizer must not exceed them
+    out = optimize_design(L_mm=4500, R1_mm=900_000, R2_mm=900_000, F=90_000, f_mod_mhz=450)
+    r = out["result"]
+    assert r["L_mm"] <= 5000.0
+    assert r["R1_mm"] <= 1_000_000.0
+    assert r["R2_mm"] <= 1_000_000.0
+    assert r["F"] <= 100_000.0
+    assert r["f_mod_mhz"] <= 500.0
