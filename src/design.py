@@ -173,15 +173,16 @@ def optimize_design(
         step = 0.10 / (2 ** cycle)
         improved_this_cycle = False
 
+        cur_total = _total(params)   # compute once; updated on each accepted move
         for key in ['L_mm', 'R1_mm', 'R2_mm', 'F', 'f_mod_mhz']:
-            cur_val   = params[key]
-            cur_total = _total(params)
-            lo, hi    = _BOUNDS[key]
-
+            cur_val    = params[key]
+            lo, hi     = _BOUNDS[key]
             best_val   = cur_val
             best_total = cur_total
             best_dir   = None
 
+            # multiplicative steps cannot reach the upper bound from within
+            # one step-width of it; parameters near their ceiling may appear frozen
             for direction, new_val in [('+', cur_val * (1 + step)),
                                         ('-', cur_val * (1 - step))]:
                 if not (lo <= new_val <= hi):
@@ -201,6 +202,7 @@ def optimize_design(
                 )
                 history.append(line)
                 params[key] = best_val
+                cur_total   = best_total   # update for next parameter
                 improved_this_cycle = True
 
         if not improved_this_cycle:
