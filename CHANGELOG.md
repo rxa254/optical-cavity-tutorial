@@ -1,5 +1,20 @@
 # CHANGELOG
 
+## Session 4 — JupyterLite GitHub Pages deployment
+
+- Replaced `%matplotlib widget` (ipympl) with `plotly>=5.0` (FigureWidget) throughout notebook
+  - Section 2: 2-panel semilogy → `go.Scatter` with `yaxis_type='log'`
+  - Section 3: stability contourf + beam caustic fill_between → `go.Contour` + `go.Scatter` fill
+  - Section 5: 4-panel PDH widget → `make_subplots(2,2)` FigureWidget, 9 traces
+  - Section 6: HOM transfer function → `go.Scatter` fill + NaN-separated sideband lines
+  - Section 7: matplotlib polar + bar → `go.Scatterpolar` + `go.Bar`
+- All code cells collapsed by default (`source_hidden: true`) for clean web view
+- Added `jupyterlite_config.json` — declares notebook + src/ as site contents
+- Added `.github/workflows/deploy.yml` — builds JupyterLite on push to main, publishes to gh-pages
+- `requirements.txt`: removed `ipympl>=0.9`, added `plotly>=5.0`
+- Local build tested: `jupyter lite build --output-dir _output` passes
+- **User action required:** Settings → Pages → source: `gh-pages` branch, `/ (root)`
+
 ## Session 3 — Notebook cleanup & greedy optimizer
 
 - Added `optimize_design` to `src/design.py`
