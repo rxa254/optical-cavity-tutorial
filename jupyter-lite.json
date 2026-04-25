@@ -9,8 +9,23 @@
     "federated_extensions": [
       {
         "extension": "./extension",
+        "load": "static/remoteEntry.9077b3d2deaffb329dfc.js",
+        "name": "@jupyter-widgets/jupyterlab-manager"
+      },
+      {
+        "extension": "./extension",
         "load": "static/remoteEntry.734e54654402309af788.js",
         "name": "@jupyterlite/pyodide-kernel-extension"
+      },
+      {
+        "extension": "./extension",
+        "load": "./static/remoteEntry.648ea111.js",
+        "name": "anywidget"
+      },
+      {
+        "load": "static/remoteEntry.b2077f01f9b03ba2c63d.js",
+        "mimeExtension": "./mimeExtension",
+        "name": "jupyterlab-plotly"
       },
       {
         "extension": "./extension",
