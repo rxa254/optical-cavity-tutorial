@@ -1,0 +1,43 @@
+{
+  "content": [
+    {
+      "content": null,
+      "created": "2026-04-25T03:46:38.455594Z",
+      "format": null,
+      "hash": null,
+      "hash_algorithm": null,
+      "last_modified": "2026-04-25T03:46:27.050904Z",
+      "mimetype": null,
+      "name": "cavity_designer.ipynb",
+      "path": "cavity_designer.ipynb",
+      "size": 283746,
+      "type": "notebook",
+      "writable": true
+    },
+    {
+      "content": null,
+      "created": "2026-04-25T03:46:38.456503Z",
+      "format": null,
+      "hash": null,
+      "hash_algorithm": null,
+      "last_modified": "2026-04-25T03:46:27.051897Z",
+      "mimetype": "text/x-python",
+      "name": "design.py",
+      "path": "design.py",
+      "size": 7291,
+      "type": "file",
+      "writable": true
+    }
+  ],
+  "created": "2026-04-25T03:46:38.455696Z",
+  "format": "json",
+  "hash": null,
+  "hash_algorithm": null,
+  "last_modified": "2026-04-25T03:46:38.455696Z",
+  "mimetype": null,
+  "name": "",
+  "path": "",
+  "size": null,
+  "type": "directory",
+  "writable": true
+}
