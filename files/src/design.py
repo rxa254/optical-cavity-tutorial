@@ -1,10 +1,10 @@
 """Multi-objective design scores for a 2-mirror optical cavity."""
 import numpy as np
 
-from src.stability import g_params
-from src.cavity import fsr as _compute_fsr, power_buildup
-from src.sidebands import R_from_finesse
-from src.hom import hom_offsets
+from .stability import g_params
+from .cavity import fsr as _compute_fsr, power_buildup
+from .sidebands import R_from_finesse
+from .hom import hom_offsets
 
 _C = 299_792_458.0
 
