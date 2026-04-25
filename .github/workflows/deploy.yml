@@ -19,7 +19,7 @@ jobs:
           python-version: '3.11'
 
       - name: Install Python dependencies
-        run: pip install numpy scipy plotly ipywidgets nbconvert ipykernel jupyterlite-core jupyterlite-pyodide-kernel jupyter-server
+        run: pip install numpy scipy plotly anywidget ipywidgets nbconvert ipykernel jupyterlite-core jupyterlite-pyodide-kernel jupyter-server
 
       - name: Execute notebook (smoke test)
         run: jupyter nbconvert --to notebook --execute cavity_designer.ipynb --output /tmp/executed.ipynb --ExecutePreprocessor.timeout=120
