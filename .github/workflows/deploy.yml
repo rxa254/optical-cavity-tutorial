@@ -21,8 +21,10 @@ jobs:
       - name: Install Python dependencies
         run: pip install numpy scipy plotly anywidget ipywidgets nbconvert ipykernel jupyterlite-core jupyterlite-pyodide-kernel jupyter-server
 
-      - name: Execute notebook (smoke test)
-        run: jupyter nbconvert --to notebook --execute cavity_designer.ipynb --output /tmp/executed.ipynb --ExecutePreprocessor.timeout=120
+      - name: Execute notebooks (smoke test)
+        run: |
+          jupyter nbconvert --to notebook --execute cavity_designer.ipynb --output /tmp/executed.ipynb --ExecutePreprocessor.timeout=120
+          jupyter nbconvert --to notebook --execute imc_designer.ipynb    --output /tmp/imc_exec.ipynb  --ExecutePreprocessor.timeout=120
         env:
           PYTHONPATH: ${{ github.workspace }}
 
@@ -32,6 +34,7 @@ jobs:
           printf '{"jupyter-lite-schema-version":0,"jupyter-config-data":{"contentsStorageName":"JupyterLite Storage %s"}}\n' "$SHA" > jupyter-lite.json
           mkdir -p _staging
           cp cavity_designer.ipynb _staging/
+          cp imc_designer.ipynb    _staging/
           cp -r src/ _staging/src/
           jupyter lite build --contents _staging --output-dir _output
 
