@@ -22,11 +22,9 @@ jobs:
         run: pip install numpy scipy plotly ipywidgets nbconvert ipykernel jupyterlite-core jupyterlite-pyodide-kernel jupyter-server
 
       - name: Execute notebook (smoke test)
-        run: |
-          jupyter nbconvert --to notebook --execute cavity_designer.ipynb \
-            --output /tmp/executed.ipynb \
-            --ExecutePreprocessor.timeout=120 \
-            --ExecutePreprocessor.startup_dir="$(pwd)"
+        run: jupyter nbconvert --to notebook --execute cavity_designer.ipynb --output /tmp/executed.ipynb --ExecutePreprocessor.timeout=120
+        env:
+          PYTHONPATH: ${{ github.workspace }}
 
       - name: Build JupyterLite site
         run: |
