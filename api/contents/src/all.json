@@ -1,0 +1,29 @@
+{
+  "content": [
+    {
+      "content": null,
+      "created": "2026-04-25T05:27:37.710168Z",
+      "format": null,
+      "hash": null,
+      "hash_algorithm": null,
+      "last_modified": "2026-04-25T05:27:36.219737Z",
+      "mimetype": "text/x-python",
+      "name": "design.py",
+      "path": "src/design.py",
+      "size": 7291,
+      "type": "file",
+      "writable": true
+    }
+  ],
+  "created": "2026-04-25T05:27:37.710168Z",
+  "format": "json",
+  "hash": null,
+  "hash_algorithm": null,
+  "last_modified": "2026-04-25T05:27:37.710168Z",
+  "mimetype": null,
+  "name": "src",
+  "path": "src",
+  "size": null,
+  "type": "directory",
+  "writable": true
+}
