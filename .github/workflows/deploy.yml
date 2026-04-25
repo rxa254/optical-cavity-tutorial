@@ -28,6 +28,8 @@ jobs:
 
       - name: Build JupyterLite site
         run: |
+          SHA=$(git rev-parse --short HEAD)
+          printf '{"jupyter-lite-schema-version":0,"jupyter-config-data":{"contentsStorageName":"JupyterLite Storage %s"}}\n' "$SHA" > jupyter-lite.json
           mkdir -p _staging
           cp cavity_designer.ipynb _staging/
           cp -r src/ _staging/src/
