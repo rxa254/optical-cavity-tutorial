@@ -1,7 +1,6 @@
 numpy>=1.24
 scipy>=1.10
-sympy>=1.12
-matplotlib>=3.7
+plotly>=5.0
+anywidget>=0.9
 ipywidgets>=8.0
 jupyterlab>=4.0
-plotly>=5.0
