@@ -1,0 +1,5 @@
+{
+  "LiteBuildConfig": {
+    "contents": ["cavity_designer.ipynb", "src/"]
+  }
+}
