@@ -22,7 +22,7 @@ jobs:
         run: pip install jupyterlite-core jupyterlite-pyodide-kernel
 
       - name: Build JupyterLite site
-        run: jupyter lite build --output-dir _output
+        run: jupyter lite build --contents cavity_designer.ipynb --contents src/ --output-dir _output
 
       - name: Deploy to gh-pages
         uses: peaceiris/actions-gh-pages@v4
