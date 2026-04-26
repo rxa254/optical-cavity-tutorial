@@ -4,7 +4,7 @@
     "appUrl": "./lab",
     "appVersion": "0.7.4",
     "baseUrl": "./",
-    "contentsStorageName": "JupyterLite Storage dc5d84d",
+    "contentsStorageName": "JupyterLite Storage 91c2b84",
     "defaultKernelName": "python",
     "faviconUrl": "./lab/favicon.ico",
     "federated_extensions": [
