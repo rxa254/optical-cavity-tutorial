@@ -305,106 +305,92 @@ def ring_design_scores(d12_m, d31_m, Rc_m, R, f_mod_mhz,
 def ring_optimize(d12_m, d31_m, Rc_m, R, f_mod_mhz,
                   weights=None, n_cycles=3, fix_fsr=False, gamma=0.3):
     """
-    Greedy coordinate-descent optimizer for the 3-mirror ring cavity.
+    Global optimizer for the 3-mirror ring cavity using differential evolution.
 
     Parameters
     ----------
-    fix_fsr : bool
-        If True, L = 2·d12 + d31 is held constant (FSR fixed).  The
-        optimizer varies d12 (redistributing length between the legs)
-        while d31 = L - 2·d12 adjusts automatically.  d31_m is not a
-        free variable.  Use this when the IFO modulation sideband
-        frequencies require a specific FSR.
-    gamma : float
-        Phase modulation depth Γ; passed to ring_design_scores to weight
-        sideband harmonics by their Bessel amplitude J_h(Γ).
+    n_cycles  : int  — effort multiplier; maxiter = n_cycles × 100 DE iterations.
+    fix_fsr   : bool — hold L = 2·d12 + d31 fixed (FSR constraint); frees
+                       d12, Rc, R, f_mod only.
+    gamma     : float — phase modulation depth Γ; weights sideband harmonics
+                        by J_h(Γ) in the HOM-avoidance score.
 
     Returns {'history': list[str], 'result': dict}.
     result keys: d12_m, d31_m, Rc_m, R, f_mod_mhz, scores (dict), total (float).
     """
+    from scipy.optimize import differential_evolution
+
     if weights is None:
         weights = {k: 1.0 for k, _ in RING_OBJECTIVES}
 
-    L_fixed = 2 * d12_m + d31_m   # round-trip length (fixed when fix_fsr=True)
+    L_fixed = 2 * d12_m + d31_m
 
     if fix_fsr:
-        # Free parameters: d12, Rc, R, f_mod  (d31 = L_fixed - 2·d12)
-        _opt_keys = ['d12_m', 'Rc_m', 'R', 'f_mod_mhz']
-        _opt_bds  = {
-            'd12_m':     (2.0, max(2.01, (L_fixed - 0.1) / 2)),
-            'Rc_m':      _RING_BOUNDS['Rc_m'],
-            'R':         _RING_BOUNDS['R'],
-            'f_mod_mhz': _RING_BOUNDS['f_mod_mhz'],
-        }
-        params = dict(d12_m=d12_m, Rc_m=Rc_m, R=R, f_mod_mhz=f_mod_mhz)
+        lo_d12 = 2.0
+        hi_d12 = max(2.01, (L_fixed - 0.1) / 2.0)
+        bounds = [
+            (lo_d12,              hi_d12),
+            _RING_BOUNDS['Rc_m'],
+            _RING_BOUNDS['R'],
+            _RING_BOUNDS['f_mod_mhz'],
+        ]
 
-        def _total(p):
-            d31 = L_fixed - 2 * p['d12_m']
-            return ring_design_scores(
-                p['d12_m'], d31, p['Rc_m'], p['R'], p['f_mod_mhz'],
-                weights=weights, gamma=gamma,
-            )['total']
+        def _neg_total(x):
+            d12, Rc, R_, fm = x
+            d31 = L_fixed - 2.0 * d12
+            return -ring_design_scores(d12, d31, Rc, R_, fm,
+                                       weights=weights, gamma=gamma)['total']
+
+        x0 = [d12_m, Rc_m, R, f_mod_mhz]
 
     else:
-        _opt_keys = list(_RING_BOUNDS)
-        _opt_bds  = _RING_BOUNDS
-        params    = dict(d12_m=d12_m, d31_m=d31_m, Rc_m=Rc_m, R=R, f_mod_mhz=f_mod_mhz)
+        bounds = [_RING_BOUNDS[k]
+                  for k in ('d12_m', 'd31_m', 'Rc_m', 'R', 'f_mod_mhz')]
 
-        def _total(p):
-            return ring_design_scores(
-                p['d12_m'], p['d31_m'], p['Rc_m'], p['R'], p['f_mod_mhz'],
-                weights=weights, gamma=gamma,
-            )['total']
+        def _neg_total(x):
+            d12, d31, Rc, R_, fm = x
+            return -ring_design_scores(d12, d31, Rc, R_, fm,
+                                       weights=weights, gamma=gamma)['total']
+
+        x0 = [d12_m, d31_m, Rc_m, R, f_mod_mhz]
 
     history = []
+    state = {'iter': 0, 'best': 1.0}   # best = neg score (minimising)
 
-    for cycle in range(n_cycles):
-        step     = 0.10 / (2 ** cycle)
-        improved = False
-        cur      = _total(params)
+    def _callback(xk, convergence):
+        state['iter'] += 1
+        score = -_neg_total(xk)
+        # Log whenever score improves noticeably or every 25 iterations
+        if score > -state['best'] + 5e-4 or state['iter'] % 25 == 0:
+            state['best'] = -score
+            history.append(f"iter {state['iter']:3d}:  total = {score:.4f}")
+        return False   # never stop early via callback
 
-        for key in _opt_keys:
-            cur_val = params[key]
-            lo, hi  = _opt_bds[key]
-            best_val, best_total, best_dir = cur_val, cur, None
-
-            for direction, new_val in [('+', cur_val * (1 + step)),
-                                       ('-', cur_val * (1 - step))]:
-                if not (lo <= new_val <= hi):
-                    continue
-                t = _total({**params, key: new_val})
-                if t > best_total:
-                    best_total, best_val, best_dir = t, new_val, direction
-
-            if best_dir is not None:
-                fmt = _RING_FMT[key]
-                history.append(
-                    f"{'↑' if best_dir == '+' else '↓'} {_RING_NAMES[key]}: "
-                    f"{cur_val:{fmt}}{_RING_UNITS[key]} → {best_val:{fmt}}{_RING_UNITS[key]}"
-                    f"  [total {cur:.3f} → {best_total:.3f}]"
-                )
-                params[key] = best_val
-                cur         = best_total
-                improved    = True
-
-        if not improved:
-            history.append(f'(cycle {cycle + 1}: no improvement — stopping early)')
-            break
-        else:
-            history.append(f'(cycle {cycle + 1} complete, step = {step * 100:.1f}%)')
-
-    # Reconstruct full parameter set
-    if fix_fsr:
-        d31_final = L_fixed - 2 * params['d12_m']
-        full = dict(d12_m=params['d12_m'], d31_m=d31_final,
-                    Rc_m=params['Rc_m'], R=params['R'],
-                    f_mod_mhz=params['f_mod_mhz'])
-    else:
-        full = dict(params)
-
-    final = ring_design_scores(
-        full['d12_m'], full['d31_m'], full['Rc_m'],
-        full['R'], full['f_mod_mhz'], weights=weights,
+    res = differential_evolution(
+        _neg_total,
+        bounds,
+        maxiter=n_cycles * 100,
+        seed=42,
+        tol=1e-5,
+        init='sobol',   # better initial population than random
+        polish=True,    # L-BFGS-B polish of the best candidate at the end
+        callback=_callback,
+        workers=1,
     )
+
+    tag = '✓ converged' if res.success else '⚠ not converged'
+    history.append(f'{tag}  after {state["iter"]} iter  —  total = {-res.fun:.4f}')
+
+    if fix_fsr:
+        d12_opt, Rc_opt, R_opt, fm_opt = res.x
+        d31_opt = L_fixed - 2.0 * d12_opt
+    else:
+        d12_opt, d31_opt, Rc_opt, R_opt, fm_opt = res.x
+
+    full  = dict(d12_m=d12_opt, d31_m=d31_opt, Rc_m=Rc_opt,
+                 R=R_opt, f_mod_mhz=fm_opt)
+    final = ring_design_scores(full['d12_m'], full['d31_m'], full['Rc_m'],
+                                full['R'], full['f_mod_mhz'],
+                                weights=weights, gamma=gamma)
     return {'history': history,
             'result':  {**full, 'scores': final, 'total': final['total']}}
