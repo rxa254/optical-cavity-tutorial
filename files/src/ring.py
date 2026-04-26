@@ -122,42 +122,60 @@ def ring_3m_finesse(R1, R2, R3=None):
     return np.pi * np.sqrt(r) / (1.0 - r)
 
 
-def ring_hom_offsets(max_mn, fsr_hz, Rc, L, tol=1e-4):
+def ring_hom_offsets(max_mn, fsr_hz, Rc, L, theta_deg=0.0, tol=1e-4):
     """
-    HOM frequency offsets from the carrier for a 3-mirror ring cavity.
+    HOM frequency offsets from the carrier for a 3-mirror triangular ring cavity
+    (2 flat mirrors + 1 curved mirror).
 
-    Uses Gouy phase ψ = arccos(1 − L/Rc) (valid for 2 flat + 1 curved).
-    HOM groups resonate at: Δf_q = (q · ψ / π) mod FSR.
+    Accounts for the odd-bounce parity flip: 3 planar reflections (odd count)
+    give a net x → −x flip each round trip, which adds a phase of m·π to
+    horizontal mode index m.  The resonance condition is:
+
+        Δf_{mn} = (m·ψ_t + n·ψ_s + m·π) / (2π) · FSR   mod   FSR
+
+    where ψ_t and ψ_s are the round-trip tangential and sagittal Gouy phases.
+    For small angle of incidence (e.g. IMC θ ≈ 1°) ψ_t ≈ ψ_s to <0.1%.
 
     Parameters
     ----------
-    max_mn : int   — highest mode order q = m+n to include
-    fsr_hz : float — ring FSR in Hz
-    Rc     : float — ROC of the curved mirror (m)
-    L      : float — round-trip length (m)
+    max_mn    : int   — highest mode order m+n to include
+    fsr_hz    : float — ring FSR in Hz
+    Rc        : float — ROC of the curved mirror (m)
+    L         : float — round-trip length (m)
+    theta_deg : float — angle of incidence at curved mirror in degrees (default 0)
+    tol       : float — fractional FSR window treated as "at resonance" (default 1e-4)
 
     Returns
     -------
-    Same format as hom.hom_offsets:
-    list of (q, delta_hz, label)
+    list of (m, n, delta_hz, label)
+        m, n      — HG mode indices (m horizontal, n vertical)
+        delta_hz  — frequency offset from carrier in [0, FSR)
+        label     — e.g. '(1,2)'
     """
-    tr_half = 1.0 - L / Rc
-    if not (-1.0 < tr_half < 1.0):
-        return []
+    theta = np.radians(theta_deg)
+    cos_t = np.cos(theta)
 
-    psi = np.arccos(tr_half)   # round-trip Gouy phase, radians
+    # Effective ROC in tangential (in-plane) and sagittal (out-of-plane) planes
+    Rc_t = Rc * cos_t
+    Rc_s = Rc / cos_t
 
-    groups = []
-    seen = set()
+    for Rc_eff in (Rc_t, Rc_s):
+        if not (-1.0 < 1.0 - L / Rc_eff < 1.0):
+            return []
+
+    psi_t = np.arccos(1.0 - L / Rc_t)   # tangential round-trip Gouy phase (rad)
+    psi_s = np.arccos(1.0 - L / Rc_s)   # sagittal round-trip Gouy phase (rad)
+
+    modes = []
     for q in range(1, max_mn + 1):
-        df  = (q * psi / np.pi * fsr_hz) % fsr_hz
-        key = round(df / fsr_hz, 5)
-        if key < tol or key > 1.0 - tol:
-            continue
-        if key in seen:
-            continue
-        seen.add(key)
-        pairs = [f'({m},{q - m})' for m in range(q + 1)]
-        groups.append((q, df, '+'.join(pairs)))
+        for m in range(q + 1):
+            n = q - m
+            # Odd-bounce parity: 3 reflections add m·π to horizontal phase
+            phase = m * psi_t + n * psi_s + m * np.pi
+            df    = (phase / (2.0 * np.pi) * fsr_hz) % fsr_hz
+            frac  = df / fsr_hz
+            if frac < tol or frac > 1.0 - tol:
+                continue
+            modes.append((m, n, df, f'({m},{n})'))
 
-    return groups
+    return modes
