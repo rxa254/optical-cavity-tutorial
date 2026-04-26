@@ -216,7 +216,7 @@ def _rs_stability(Rc, L):
     return float(1.0 - abs(tr))
 
 
-def _rs_hom_avoidance(d12, d31, Rc, F, f_mod_hz, max_mn=8, beta=0.3):
+def _rs_hom_avoidance(d12, d31, Rc, F, f_mod_hz, max_mn=8, gamma=0.3):
     L      = 2 * d12 + d31
     fsr_hz = ring_fsr(L)
     lw_hz  = fsr_hz / F
@@ -224,7 +224,7 @@ def _rs_hom_avoidance(d12, d31, Rc, F, f_mod_hz, max_mn=8, beta=0.3):
     if not offsets:
         return 0.0
     target = 10.0 * lw_hz
-    j1 = max(abs(float(_jv(1, beta))), 1e-10)   # ±1f amplitude (normalisation reference)
+    j1 = max(abs(float(_jv(1, gamma))), 1e-10)   # ±1f amplitude (normalisation reference)
     min_eff_sep = np.inf
     for (m, n, df, _) in offsets:
         df_c = df if df < fsr_hz / 2 else df - fsr_hz
@@ -232,7 +232,7 @@ def _rs_hom_avoidance(d12, d31, Rc, F, f_mod_hz, max_mn=8, beta=0.3):
             # Scale effective separation by relative Bessel amplitude J_h / J_1.
             # A 2f collision at separation s matters as much as a 1f collision at
             # s * (J_2/J_1) — i.e., weak harmonics need to be much closer to count.
-            j_h = max(abs(float(_jv(h, beta))), 1e-10)
+            j_h = max(abs(float(_jv(h, gamma))), 1e-10)
             for sign in [+1, -1]:
                 fsb   = (sign * h * f_mod_hz) % fsr_hz
                 fsb_c = fsb if fsb < fsr_hz / 2 else fsb - fsr_hz
@@ -266,7 +266,7 @@ def _rs_beam_waist(d12, d31, Rc, wavelength=1064e-9,
 
 
 def ring_design_scores(d12_m, d31_m, Rc_m, R, f_mod_mhz,
-                       weights=None, max_mn=8, beta=0.3):
+                       weights=None, max_mn=8, gamma=0.3):
     """
     Multi-objective design scores for a 3-mirror triangular ring cavity.
 
@@ -279,8 +279,8 @@ def ring_design_scores(d12_m, d31_m, Rc_m, R, f_mod_mhz,
     f_mod_mhz : float — modulation frequency in MHz
     weights   : dict  — per-objective weight (default all 1.0)
     max_mn    : int   — HOM order cutoff
-    beta      : float — phase modulation depth (used to weight sideband harmonics
-                        by their Bessel amplitude J_h(beta) when scoring HOM avoidance)
+    gamma     : float — phase modulation depth Γ (used to weight sideband harmonics
+                        by their Bessel amplitude J_h(Γ) when scoring HOM avoidance)
 
     Returns
     -------
@@ -292,7 +292,7 @@ def ring_design_scores(d12_m, d31_m, Rc_m, R, f_mod_mhz,
     f_mod  = f_mod_mhz * 1e6
     raw = {
         'stability':     _rs_stability(Rc_m, 2 * d12_m + d31_m),
-        'hom_avoidance': _rs_hom_avoidance(d12_m, d31_m, Rc_m, F, f_mod, max_mn, beta),
+        'hom_avoidance': _rs_hom_avoidance(d12_m, d31_m, Rc_m, F, f_mod, max_mn, gamma),
         'pdh_slope':     _rs_pdh_slope(d12_m, d31_m, F, f_mod),
         'finesse':       _rs_finesse(F),
         'beam_waist':    _rs_beam_waist(d12_m, d31_m, Rc_m),
@@ -303,7 +303,7 @@ def ring_design_scores(d12_m, d31_m, Rc_m, R, f_mod_mhz,
 
 
 def ring_optimize(d12_m, d31_m, Rc_m, R, f_mod_mhz,
-                  weights=None, n_cycles=3, fix_fsr=False, beta=0.3):
+                  weights=None, n_cycles=3, fix_fsr=False, gamma=0.3):
     """
     Greedy coordinate-descent optimizer for the 3-mirror ring cavity.
 
@@ -315,9 +315,9 @@ def ring_optimize(d12_m, d31_m, Rc_m, R, f_mod_mhz,
         while d31 = L - 2·d12 adjusts automatically.  d31_m is not a
         free variable.  Use this when the IFO modulation sideband
         frequencies require a specific FSR.
-    beta : float
-        Phase modulation depth; passed to ring_design_scores to weight
-        sideband harmonics by their Bessel amplitude J_h(beta).
+    gamma : float
+        Phase modulation depth Γ; passed to ring_design_scores to weight
+        sideband harmonics by their Bessel amplitude J_h(Γ).
 
     Returns {'history': list[str], 'result': dict}.
     result keys: d12_m, d31_m, Rc_m, R, f_mod_mhz, scores (dict), total (float).
@@ -342,7 +342,7 @@ def ring_optimize(d12_m, d31_m, Rc_m, R, f_mod_mhz,
             d31 = L_fixed - 2 * p['d12_m']
             return ring_design_scores(
                 p['d12_m'], d31, p['Rc_m'], p['R'], p['f_mod_mhz'],
-                weights=weights, beta=beta,
+                weights=weights, gamma=gamma,
             )['total']
 
     else:
@@ -353,7 +353,7 @@ def ring_optimize(d12_m, d31_m, Rc_m, R, f_mod_mhz,
         def _total(p):
             return ring_design_scores(
                 p['d12_m'], p['d31_m'], p['Rc_m'], p['R'], p['f_mod_mhz'],
-                weights=weights, beta=beta,
+                weights=weights, gamma=gamma,
             )['total']
 
     history = []
