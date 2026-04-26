@@ -293,9 +293,18 @@ def ring_design_scores(d12_m, d31_m, Rc_m, R, f_mod_mhz,
 
 
 def ring_optimize(d12_m, d31_m, Rc_m, R, f_mod_mhz,
-                  weights=None, n_cycles=3):
+                  weights=None, n_cycles=3, fix_fsr=False):
     """
     Greedy coordinate-descent optimizer for the 3-mirror ring cavity.
+
+    Parameters
+    ----------
+    fix_fsr : bool
+        If True, L = 2·d12 + d31 is held constant (FSR fixed).  The
+        optimizer varies d12 (redistributing length between the legs)
+        while d31 = L - 2·d12 adjusts automatically.  d31_m is not a
+        free variable.  Use this when the IFO modulation sideband
+        frequencies require a specific FSR.
 
     Returns {'history': list[str], 'result': dict}.
     result keys: d12_m, d31_m, Rc_m, R, f_mod_mhz, scores (dict), total (float).
@@ -303,23 +312,47 @@ def ring_optimize(d12_m, d31_m, Rc_m, R, f_mod_mhz,
     if weights is None:
         weights = {k: 1.0 for k, _ in RING_OBJECTIVES}
 
-    params  = dict(d12_m=d12_m, d31_m=d31_m, Rc_m=Rc_m, R=R, f_mod_mhz=f_mod_mhz)
-    history = []
+    L_fixed = 2 * d12_m + d31_m   # round-trip length (fixed when fix_fsr=True)
 
-    def _total(p):
-        return ring_design_scores(
-            p['d12_m'], p['d31_m'], p['Rc_m'], p['R'], p['f_mod_mhz'],
-            weights=weights,
-        )['total']
+    if fix_fsr:
+        # Free parameters: d12, Rc, R, f_mod  (d31 = L_fixed - 2·d12)
+        _opt_keys = ['d12_m', 'Rc_m', 'R', 'f_mod_mhz']
+        _opt_bds  = {
+            'd12_m':     (2.0, max(2.01, (L_fixed - 0.1) / 2)),
+            'Rc_m':      _RING_BOUNDS['Rc_m'],
+            'R':         _RING_BOUNDS['R'],
+            'f_mod_mhz': _RING_BOUNDS['f_mod_mhz'],
+        }
+        params = dict(d12_m=d12_m, Rc_m=Rc_m, R=R, f_mod_mhz=f_mod_mhz)
+
+        def _total(p):
+            d31 = L_fixed - 2 * p['d12_m']
+            return ring_design_scores(
+                p['d12_m'], d31, p['Rc_m'], p['R'], p['f_mod_mhz'],
+                weights=weights,
+            )['total']
+
+    else:
+        _opt_keys = list(_RING_BOUNDS)
+        _opt_bds  = _RING_BOUNDS
+        params    = dict(d12_m=d12_m, d31_m=d31_m, Rc_m=Rc_m, R=R, f_mod_mhz=f_mod_mhz)
+
+        def _total(p):
+            return ring_design_scores(
+                p['d12_m'], p['d31_m'], p['Rc_m'], p['R'], p['f_mod_mhz'],
+                weights=weights,
+            )['total']
+
+    history = []
 
     for cycle in range(n_cycles):
         step     = 0.10 / (2 ** cycle)
         improved = False
         cur      = _total(params)
 
-        for key in list(_RING_BOUNDS):
+        for key in _opt_keys:
             cur_val = params[key]
-            lo, hi  = _RING_BOUNDS[key]
+            lo, hi  = _opt_bds[key]
             best_val, best_total, best_dir = cur_val, cur, None
 
             for direction, new_val in [('+', cur_val * (1 + step)),
@@ -347,9 +380,18 @@ def ring_optimize(d12_m, d31_m, Rc_m, R, f_mod_mhz,
         else:
             history.append(f'(cycle {cycle + 1} complete, step = {step * 100:.1f}%)')
 
+    # Reconstruct full parameter set
+    if fix_fsr:
+        d31_final = L_fixed - 2 * params['d12_m']
+        full = dict(d12_m=params['d12_m'], d31_m=d31_final,
+                    Rc_m=params['Rc_m'], R=params['R'],
+                    f_mod_mhz=params['f_mod_mhz'])
+    else:
+        full = dict(params)
+
     final = ring_design_scores(
-        params['d12_m'], params['d31_m'], params['Rc_m'],
-        params['R'], params['f_mod_mhz'], weights=weights,
+        full['d12_m'], full['d31_m'], full['Rc_m'],
+        full['R'], full['f_mod_mhz'], weights=weights,
     )
     return {'history': history,
-            'result':  {**params, 'scores': final, 'total': final['total']}}
+            'result':  {**full, 'scores': final, 'total': final['total']}}
