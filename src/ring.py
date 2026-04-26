@@ -226,10 +226,11 @@ def _rs_hom_avoidance(d12, d31, Rc, F, f_mod_hz, max_mn=8):
     min_sep = np.inf
     for (m, n, df, _) in offsets:
         df_c = df if df < fsr_hz / 2 else df - fsr_hz
-        for sign in [+1, -1]:
-            fsb   = (sign * f_mod_hz) % fsr_hz
-            fsb_c = fsb if fsb < fsr_hz / 2 else fsb - fsr_hz
-            min_sep = min(min_sep, abs(fsb_c - df_c))
+        for h in [1, 2, 3]:          # include sideband harmonics
+            for sign in [+1, -1]:
+                fsb   = (sign * h * f_mod_hz) % fsr_hz
+                fsb_c = fsb if fsb < fsr_hz / 2 else fsb - fsr_hz
+                min_sep = min(min_sep, abs(fsb_c - df_c))
     return float(np.clip(min_sep / target, 0.0, 1.0))
 
 
