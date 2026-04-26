@@ -179,3 +179,177 @@ def ring_hom_offsets(max_mn, fsr_hz, Rc, L, theta_deg=0.0, tol=1e-4):
             modes.append((m, n, df, f'({m},{n})'))
 
     return modes
+
+
+# ── multi-objective design scoring for 3-mirror ring cavity ──────────────────
+
+RING_OBJECTIVES = [
+    ('stability',     'Stability'),
+    ('hom_avoidance', 'HOM avoid.'),
+    ('pdh_slope',     'PDH slope'),
+    ('finesse',       'Finesse'),
+    ('beam_waist',    'Beam waist'),
+]
+
+_RING_BOUNDS = {
+    'd12_m':     (2.0,   25.0),
+    'd31_m':     (0.1,   3.0),
+    'Rc_m':      (15.0,  100.0),
+    'R':         (0.90,  0.9999),
+    'f_mod_mhz': (1.0,   80.0),
+}
+_RING_NAMES = {'d12_m': 'd₁₂', 'd31_m': 'd₃₁', 'Rc_m': 'Rc',
+               'R': 'R', 'f_mod_mhz': 'f_mod'}
+_RING_UNITS = {'d12_m': 'm', 'd31_m': 'm', 'Rc_m': 'm',
+               'R': '', 'f_mod_mhz': 'MHz'}
+_RING_FMT   = {'d12_m': '.1f', 'd31_m': '.2f', 'Rc_m': '.2f',
+               'R': '.4f', 'f_mod_mhz': '.1f'}
+
+_HR_R2 = 0.99999   # fixed HR mirror reflectivity for finesse calculation
+
+
+def _rs_stability(Rc, L):
+    tr = 1.0 - L / Rc
+    if abs(tr) >= 1.0:
+        return 0.0
+    return float(1.0 - abs(tr))
+
+
+def _rs_hom_avoidance(d12, d31, Rc, F, f_mod_hz, max_mn=8):
+    L      = 2 * d12 + d31
+    fsr_hz = ring_fsr(L)
+    lw_hz  = fsr_hz / F
+    offsets = ring_hom_offsets(max_mn, fsr_hz, Rc, L)
+    if not offsets:
+        return 0.0
+    target  = 10.0 * lw_hz
+    min_sep = np.inf
+    for (m, n, df, _) in offsets:
+        df_c = df if df < fsr_hz / 2 else df - fsr_hz
+        for sign in [+1, -1]:
+            fsb   = (sign * f_mod_hz) % fsr_hz
+            fsb_c = fsb if fsb < fsr_hz / 2 else fsb - fsr_hz
+            min_sep = min(min_sep, abs(fsb_c - df_c))
+    return float(np.clip(min_sep / target, 0.0, 1.0))
+
+
+def _rs_pdh_slope(d12, d31, F, f_mod_hz):
+    L     = 2 * d12 + d31
+    fsr   = ring_fsr(L)
+    lw    = fsr / F
+    return float(np.clip(f_mod_hz / (10.0 * lw), 0.0, 1.0))
+
+
+def _rs_finesse(F, F_target=2000.0):
+    return float(np.clip(np.log10(max(F, 1.0)) / np.log10(F_target), 0.0, 1.0))
+
+
+def _rs_beam_waist(d12, d31, Rc, wavelength=1064e-9,
+                   w0_min=0.5e-3, w0_max=8.0e-3):
+    res = ring_3m_mode(d12, d12, d31, Rc, wavelength)
+    if not res['stable'] or res['w0'] is None:
+        return 0.0
+    w0 = res['w0']
+    if w0 < w0_min or w0 > w0_max:
+        return 0.0
+    w0_mid     = np.sqrt(w0_min * w0_max)
+    half_range = np.log(w0_max / w0_min) / 2.0
+    return float(np.clip(1.0 - abs(np.log(w0 / w0_mid)) / half_range, 0.0, 1.0))
+
+
+def ring_design_scores(d12_m, d31_m, Rc_m, R, f_mod_mhz,
+                       weights=None, max_mn=8):
+    """
+    Multi-objective design scores for a 3-mirror triangular ring cavity.
+
+    Parameters
+    ----------
+    d12_m     : float — d12 = d23 leg length in metres
+    d31_m     : float — short leg d31 in metres
+    Rc_m      : float — curved mirror ROC in metres
+    R         : float — power reflectivity of coupling mirrors (R1 = R3)
+    f_mod_mhz : float — modulation frequency in MHz
+    weights   : dict  — per-objective weight (default all 1.0)
+    max_mn    : int   — HOM order cutoff
+
+    Returns
+    -------
+    dict with one float per RING_OBJECTIVES key plus 'total'.
+    """
+    if weights is None:
+        weights = {k: 1.0 for k, _ in RING_OBJECTIVES}
+    F      = ring_3m_finesse(R, _HR_R2)
+    f_mod  = f_mod_mhz * 1e6
+    raw = {
+        'stability':     _rs_stability(Rc_m, 2 * d12_m + d31_m),
+        'hom_avoidance': _rs_hom_avoidance(d12_m, d31_m, Rc_m, F, f_mod, max_mn),
+        'pdh_slope':     _rs_pdh_slope(d12_m, d31_m, F, f_mod),
+        'finesse':       _rs_finesse(F),
+        'beam_waist':    _rs_beam_waist(d12_m, d31_m, Rc_m),
+    }
+    w_sum = sum(weights.get(k, 1.0) for k in raw) or 1.0
+    raw['total'] = float(sum(weights.get(k, 1.0) * v for k, v in raw.items()) / w_sum)
+    return raw
+
+
+def ring_optimize(d12_m, d31_m, Rc_m, R, f_mod_mhz,
+                  weights=None, n_cycles=3):
+    """
+    Greedy coordinate-descent optimizer for the 3-mirror ring cavity.
+
+    Returns {'history': list[str], 'result': dict}.
+    result keys: d12_m, d31_m, Rc_m, R, f_mod_mhz, scores (dict), total (float).
+    """
+    if weights is None:
+        weights = {k: 1.0 for k, _ in RING_OBJECTIVES}
+
+    params  = dict(d12_m=d12_m, d31_m=d31_m, Rc_m=Rc_m, R=R, f_mod_mhz=f_mod_mhz)
+    history = []
+
+    def _total(p):
+        return ring_design_scores(
+            p['d12_m'], p['d31_m'], p['Rc_m'], p['R'], p['f_mod_mhz'],
+            weights=weights,
+        )['total']
+
+    for cycle in range(n_cycles):
+        step     = 0.10 / (2 ** cycle)
+        improved = False
+        cur      = _total(params)
+
+        for key in list(_RING_BOUNDS):
+            cur_val = params[key]
+            lo, hi  = _RING_BOUNDS[key]
+            best_val, best_total, best_dir = cur_val, cur, None
+
+            for direction, new_val in [('+', cur_val * (1 + step)),
+                                       ('-', cur_val * (1 - step))]:
+                if not (lo <= new_val <= hi):
+                    continue
+                t = _total({**params, key: new_val})
+                if t > best_total:
+                    best_total, best_val, best_dir = t, new_val, direction
+
+            if best_dir is not None:
+                fmt = _RING_FMT[key]
+                history.append(
+                    f"{'↑' if best_dir == '+' else '↓'} {_RING_NAMES[key]}: "
+                    f"{cur_val:{fmt}}{_RING_UNITS[key]} → {best_val:{fmt}}{_RING_UNITS[key]}"
+                    f"  [total {cur:.3f} → {best_total:.3f}]"
+                )
+                params[key] = best_val
+                cur         = best_total
+                improved    = True
+
+        if not improved:
+            history.append(f'(cycle {cycle + 1}: no improvement — stopping early)')
+            break
+        else:
+            history.append(f'(cycle {cycle + 1} complete, step = {step * 100:.1f}%)')
+
+    final = ring_design_scores(
+        params['d12_m'], params['d31_m'], params['Rc_m'],
+        params['R'], params['f_mod_mhz'], weights=weights,
+    )
+    return {'history': history,
+            'result':  {**params, 'scores': final, 'total': final['total']}}
