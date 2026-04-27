@@ -1,9 +1,8 @@
 """3-mirror triangular ring cavity: ABCD, eigenmode, and HOM resonances."""
 import numpy as np
+from scipy.constants import c as _C
 from scipy.special import jv as _jv
 from .beams import q_beam_radius, abcd_propagate, beam_caustic  # noqa: F401 (re-exported)
-
-_C = 299_792_458.0
 
 
 def ring_fsr(L):
@@ -197,8 +196,13 @@ _RING_BOUNDS = {
     'd31_m':     (0.1,   3.0),
     'Rc_m':      (15.0,  100.0),
     'R':         (0.90,  0.9999),
-    'f_mod_mhz': (1.0,   80.0),
+    'f_mod_mhz': (1.0,   80.0),   # IMC locking frequency — independent of f_IFO
 }
+
+# IFO modulation frequency that the IMC must transmit.
+# The IMC FSR must satisfy FSR = f_IFO / n for a positive integer n, so that
+# f_IFO sidebands are resonant in the IMC and transmitted to the main IFO.
+F_IFO_MHZ_DEFAULT = 9.1
 _RING_NAMES = {'d12_m': 'd₁₂', 'd31_m': 'd₃₁', 'Rc_m': 'Rc',
                'R': 'R', 'f_mod_mhz': 'f_mod'}
 _RING_UNITS = {'d12_m': 'm', 'd31_m': 'm', 'Rc_m': 'm',
@@ -303,17 +307,27 @@ def ring_design_scores(d12_m, d31_m, Rc_m, R, f_mod_mhz,
 
 
 def ring_optimize(d12_m, d31_m, Rc_m, R, f_mod_mhz,
-                  weights=None, n_cycles=3, fix_fsr=False, gamma=0.3):
+                  weights=None, n_cycles=3, fix_fsr=False, gamma=0.3,
+                  f_IFO_mhz=F_IFO_MHZ_DEFAULT, n_fsr=1):
     """
     Global optimizer for the 3-mirror ring cavity using differential evolution.
 
     Parameters
     ----------
     n_cycles  : int  — effort multiplier; maxiter = n_cycles × 100 DE iterations.
-    fix_fsr   : bool — hold L = 2·d12 + d31 fixed (FSR constraint); frees
-                       d12, Rc, R, f_mod only.
+    fix_fsr   : bool — hold L fixed so that FSR = f_IFO_mhz / n_fsr, which
+                       ensures the IFO sidebands (at f_IFO_mhz) are resonant
+                       in the IMC and therefore transmitted. When True, only
+                       d12 (and derived d31), Rc, R, and f_mod are optimized.
     gamma     : float — phase modulation depth Γ; weights sideband harmonics
                         by J_h(Γ) in the HOM-avoidance score.
+    f_IFO_mhz : float — IFO modulation frequency (MHz) that must be transmitted
+                        by the IMC (default 9.1 MHz). Sets the FSR when
+                        fix_fsr=True via L = n_fsr * c / f_IFO.
+    n_fsr     : int   — FSR harmonic: FSR = f_IFO_mhz / n_fsr. n_fsr=1 gives
+                        FSR = f_IFO ≈ 9.1 MHz (L ≈ 33 m, LIGO-scale); larger
+                        n_fsr gives shorter cavities at the cost of more IFO
+                        sidebands inside the IMC bandwidth.
 
     Returns {'history': list[str], 'result': dict}.
     result keys: d12_m, d31_m, Rc_m, R, f_mod_mhz, scores (dict), total (float).
@@ -323,9 +337,13 @@ def ring_optimize(d12_m, d31_m, Rc_m, R, f_mod_mhz,
     if weights is None:
         weights = {k: 1.0 for k, _ in RING_OBJECTIVES}
 
-    L_fixed = 2 * d12_m + d31_m
+    # Cavity length that makes FSR = f_IFO / n_fsr (IFO sidebands resonant → transmitted)
+    L_IFO = n_fsr * _C / (f_IFO_mhz * 1e6)
+    # For free optimization, start from the caller's geometry
+    L_free = 2 * d12_m + d31_m
 
     if fix_fsr:
+        L_fixed = L_IFO
         lo_d12 = 2.0
         hi_d12 = max(2.01, (L_fixed - 0.1) / 2.0)
         bounds = [
@@ -341,9 +359,10 @@ def ring_optimize(d12_m, d31_m, Rc_m, R, f_mod_mhz,
             return -ring_design_scores(d12, d31, Rc, R_, fm,
                                        weights=weights, gamma=gamma)['total']
 
-        x0 = [d12_m, Rc_m, R, f_mod_mhz]
+        x0 = [min(max((L_fixed - 0.1) / 2.0, lo_d12), hi_d12), Rc_m, R, f_mod_mhz]
 
     else:
+        L_fixed = L_free
         bounds = [_RING_BOUNDS[k]
                   for k in ('d12_m', 'd31_m', 'Rc_m', 'R', 'f_mod_mhz')]
 
