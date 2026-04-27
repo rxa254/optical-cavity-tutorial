@@ -1,12 +1,11 @@
 """Multi-objective design scores for a 2-mirror optical cavity."""
 import numpy as np
+from scipy.constants import c as _C
 
 from .stability import g_params
 from .cavity import fsr as _compute_fsr, power_buildup
 from .sidebands import R_from_finesse
 from .hom import hom_offsets
-
-_C = 299_792_458.0
 
 
 def score_stability(L_m, R1_m, R2_m):

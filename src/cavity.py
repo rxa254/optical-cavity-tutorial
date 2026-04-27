@@ -1,7 +1,6 @@
 """Core cavity physics: finesse, FSR, linewidth, power buildup, coupling spectra."""
 import numpy as np
-
-C = 299_792_458.0  # m/s
+from scipy.constants import c as C
 
 
 def finesse(R1, R2):
